@@ -1,0 +1,289 @@
+from abc import ABC, abstractmethod
+from datetime import datetime
+from typing import List, Optional
+
+
+# ==============================================================================
+# 1. SINGLETON PATTERN
+# ==============================================================================
+class DatabaseConnection:
+    _instance: Optional['DatabaseConnection'] = None
+
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super(DatabaseConnection, cls).__new__(cls)
+            cls._instance._connected = False
+        return cls._instance
+
+    @classmethod
+    def get_instance(cls) -> 'DatabaseConnection':
+        if cls._instance is None:
+            cls._instance = DatabaseConnection()
+        return cls._instance
+
+    def connect(self) -> bool:
+        self._connected = True
+        print("[DB] Connected to database.")
+        return self._connected
+
+    def disconnect(self) -> None:
+        self._connected = False
+        print("[DB] Disconnected from database.")
+
+    def execute_query(self, query: str) -> List[dict]:
+        if not self._connected:
+            self.connect()
+        print(f"[DB] Executing query: {query}")
+        return [{"status": "success", "query": query}]
+
+
+# ==============================================================================
+# 2. FACTORY PATTERN
+# ==============================================================================
+class Food(ABC):
+    def __init__(self, food_id: int, name: str, base_price: float, description: str):
+        self._food_id = food_id
+        self._name = name
+        self._base_price = base_price
+        self._description = description
+
+    @abstractmethod
+    def get_details(self) -> str:
+        pass
+
+    @abstractmethod
+    def get_price(self) -> float:
+        pass
+
+
+class Pizza(Food):
+    def __init__(self, food_id: int, name: str, base_price: float, description: str, size: str = "Medium", crust_type: str = "Thin Crust"):
+        super().__init__(food_id, name, base_price, description)
+        self.__size = size
+        self.__crust_type = crust_type
+
+    def get_details(self) -> str:
+        return f"Pizza: {self._name} ({self.__size}, {self.__crust_type}) - {self._description}"
+
+    def get_price(self) -> float:
+        multiplier = 1.2 if self.__size == "Large" else 1.0
+        return round(self._base_price * multiplier, 2)
+
+
+class Burger(Food):
+    def __init__(self, food_id: int, name: str, base_price: float, description: str, patty_type: str = "Aloo Tikki", is_veg: bool = True):
+        super().__init__(food_id, name, base_price, description)
+        self.__patty_type = patty_type
+        self.__is_veg = is_veg
+
+    def get_details(self) -> str:
+        veg_label = "Veg" if self.__is_veg else "Non-Veg"
+        return f"Burger: {self._name} [{veg_label}, {self.__patty_type} Patty] - {self._description}"
+
+    def get_price(self) -> float:
+        return self._base_price
+
+
+class Sandwich(Food):
+    def __init__(self, food_id: int, name: str, base_price: float, description: str, bread_type: str = "Multigrain", filling: str = "Grilled Veggies"):
+        super().__init__(food_id, name, base_price, description)
+        self.__bread_type = bread_type
+        self.__filling = filling
+
+    def get_details(self) -> str:
+        return f"Sandwich: {self._name} ({self.__bread_type} bread, {self.__filling}) - {self._description}"
+
+    def get_price(self) -> float:
+        return self._base_price
+
+
+class FoodFactory:
+    @staticmethod
+    def create_food(food_type: str) -> Food:
+        food_type = food_type.strip().lower()
+        if food_type == "pizza":
+            return Pizza(101, "Margherita Pizza", 299.0, "Classic cheese and tomato", "Large", "Cheese Burst")
+        elif food_type == "burger":
+            return Burger(102, "Crispy Veggie Burger", 149.0, "Crunchy patty with house sauce", "Herb & Potato", True)
+        elif food_type == "sandwich":
+            return Sandwich(103, "Club Sandwich", 129.0, "Toasted triple-decker", "Sourdough", "Paneer Tikka")
+        else:
+            raise ValueError(f"Unknown food type: {food_type}")
+
+
+# ==============================================================================
+# 3. DECORATOR PATTERN
+# ==============================================================================
+class FoodDecorator(Food, ABC):
+    def __init__(self, wrapped_food: Food):
+        super().__init__(wrapped_food._food_id, wrapped_food._name, wrapped_food._base_price, wrapped_food._description)
+        self._wrapped_food = wrapped_food
+
+    @abstractmethod
+    def get_price(self) -> float:
+        pass
+
+    @abstractmethod
+    def get_details(self) -> str:
+        pass
+
+
+class ExtraCheese(FoodDecorator):
+    def __init__(self, wrapped_food: Food, extra_charge: float = 40.0):
+        super().__init__(wrapped_food)
+        self.__extra_charge = extra_charge
+
+    def get_price(self) -> float:
+        return self._wrapped_food.get_price() + self.__extra_charge
+
+    def get_details(self) -> str:
+        return f"{self._wrapped_food.get_details()} + Extra Cheese"
+
+
+class ExtraToppings(FoodDecorator):
+    def __init__(self, wrapped_food: Food, toppings: List[str], extra_charge: float = 50.0):
+        super().__init__(wrapped_food)
+        self.__toppings = toppings
+        self.__extra_charge = extra_charge
+
+    def get_price(self) -> float:
+        return self._wrapped_food.get_price() + self.__extra_charge
+
+    def get_details(self) -> str:
+        toppings_str = ", ".join(self.__toppings)
+        return f"{self._wrapped_food.get_details()} + Extra Toppings ({toppings_str})"
+
+
+# ==============================================================================
+# 4. OBSERVER PATTERN
+# ==============================================================================
+class Observer(ABC):
+    @abstractmethod
+    def update(self, status: str) -> None:
+        pass
+
+
+class CustomerObserver(Observer):
+    def __init__(self, customer_id: int, notification_channel: str = "SMS/App"):
+        self.__customer_id = customer_id
+        self.__notification_channel = notification_channel
+
+    def update(self, status: str) -> None:
+        self.send_notification(f"Order status updated to: {status}")
+
+    def send_notification(self, message: str) -> None:
+        print(f"[Notification -> Customer #{self.__customer_id} via {self.__notification_channel}]: {message}")
+
+
+class Order:
+    def __init__(self, order_id: int, total_amount: float = 0.0):
+        self.__order_id = order_id
+        self.__order_date = datetime.now()
+        self.__total_amount = total_amount
+        self.__order_status = "Created"
+        self.__observers: List[Observer] = []
+
+    @property
+    def order_id(self) -> int:
+        return self.__order_id
+
+    @property
+    def total_amount(self) -> float:
+        return self.__total_amount
+
+    @property
+    def order_status(self) -> str:
+        return self.__order_status
+
+    def create_order(self) -> None:
+        self.update_status("Order Placed")
+
+    def calculate_total(self) -> float:
+        return self.__total_amount
+
+    def update_status(self, status: str) -> None:
+        self.__order_status = status
+        print(f"\n[Order #{self.__order_id}] Status changed -> {self.__order_status}")
+        self.notify_observers()
+
+    def cancel_order(self) -> None:
+        self.update_status("Cancelled")
+
+    def add_observer(self, observer: Observer) -> None:
+        if observer not in self.__observers:
+            self.__observers.append(observer)
+
+    def remove_observer(self, observer: Observer) -> None:
+        if observer in self.__observers:
+            self.__observers.remove(observer)
+
+    def notify_observers(self) -> None:
+        for observer in self.__observers:
+            observer.update(self.__order_status)
+
+
+# ==============================================================================
+# 5. STRATEGY PATTERN
+# ==============================================================================
+class PaymentStrategy(ABC):
+    @abstractmethod
+    def pay(self, amount: float) -> bool:
+        pass
+
+
+class UpiPayment(PaymentStrategy):
+    def __init__(self, upi_id: str):
+        self.__upi_id = upi_id
+
+    def validate_upi_id(self) -> bool:
+        return "@" in self.__upi_id and len(self.__upi_id) > 3
+
+    def pay(self, amount: float) -> bool:
+        if self.validate_upi_id():
+            print(f"[Payment - UPI] Paid ₹{amount:.2f} using UPI ID: {self.__upi_id}")
+            return True
+        print("[Payment - UPI] Invalid UPI ID!")
+        return False
+
+
+class CardPayment(PaymentStrategy):
+    def __init__(self, card_number: str, card_holder: str, expiry_date: str):
+        self.__card_number = card_number
+        self.__card_holder = card_holder
+        self.__expiry_date = expiry_date
+
+    def validate_card(self) -> bool:
+        return len(self.__card_number.replace(" ", "")) == 16
+
+    def pay(self, amount: float) -> bool:
+        if self.validate_card():
+            masked = "XXXX-XXXX-XXXX-" + self.__card_number[-4:]
+            print(f"[Payment - Card] Paid ₹{amount:.2f} by {self.__card_holder} ({masked})")
+            return True
+        print("[Payment - Card] Invalid card details!")
+        return False
+
+
+class CashOnDelivery(PaymentStrategy):
+    def __init__(self):
+        self.__collected_amount = 0.0
+
+    def collect_cash(self, amount: float) -> None:
+        self.__collected_amount = amount
+        print(f"[Payment - COD] ₹{self.__collected_amount:.2f} marked for collection upon delivery.")
+
+    def pay(self, amount: float) -> bool:
+        self.collect_cash(amount)
+        return True
+
+
+class Payment:
+    def __init__(self, payment_id: int, amount: float):
+        self.__payment_id = payment_id
+        self.__amount = amount
+        self.__payment_status = "Pending"
+        self.__strategy: Optional[PaymentStrategy] = None
+
+    @property
+    def payment_status(self) -> str:
+        return self.__payment_status
